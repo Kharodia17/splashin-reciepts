@@ -24,8 +24,8 @@ if 'whatsapp_data' not in st.session_state:
 def get_fonts():
     """Load fonts safely, falling back to default if necessary."""
     try:
-        font = ImageFont.truetype("arial.ttf", 18)
-        check_font = ImageFont.truetype("arial.ttf", 22)
+        font = ImageFont.truetype("arial.TTF", 18)
+        check_font = ImageFont.truetype("arial.TTF", 22)
         return font, check_font
     except IOError:
         return ImageFont.load_default(), ImageFont.load_default()
@@ -240,4 +240,5 @@ with tab2:
                     data=zip_buffer.getvalue(),
                     file_name="Splashin_Receipts.zip",
                     mime="application/zip"
+
                 )
