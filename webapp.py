@@ -90,23 +90,39 @@ def create_receipt_image(data, template_img):
     return img
 
 def parse_consolidated_line(text_dump):
-    """Parses WhatsApp dump into structured list."""
+    """Parses bulk list into structured entries.
+
+    Format: Name R[Amount](optional breakdown) reason EFT|CASH
+    Example: Kharodia's Abdul, Zahra, Saleemah R2070(R200 reg R400 goggles bal fees) swim fees EFT
+    """
     rows = []
     lines = text_dump.strip().split('\n')
-    
+
     for line in lines:
         if not line.strip(): continue
-        # Regex: Name ... R(digits) ... Reason
-        match = re.search(r"^(.*?)\s+(R\d+)\s+(.*)$", line.strip())
-        
-        if match:
+
+        # Step 1: Extract payment type from end of line
+        type_match = re.search(r'\b(EFT|CASH)\s*$', line.strip(), re.IGNORECASE)
+        payment_type = type_match.group(1).upper() if type_match else 'EFT'
+        remainder = line[:type_match.start()].strip() if type_match else line.strip()
+
+        # Step 2: Extract amount + optional breakdown e.g. R2070(R200 reg R400 goggles)
+        amount_match = re.search(r'(R\d+)(\([^)]*\))?', remainder)
+
+        if amount_match:
+            name = remainder[:amount_match.start()].strip()
+            amount = amount_match.group(1)
+            breakdown = amount_match.group(2) or ''
+            reason_text = remainder[amount_match.end():].strip()
+            # Combine reason + breakdown so create_receipt_image() formats it correctly
+            reason = (reason_text + ' ' + breakdown).strip() if breakdown else reason_text
             rows.append({
                 'rn': "",
                 'date': datetime.datetime.now().strftime("%Y-%m-%d"),
-                'name': match.group(1).strip(),
-                'amount': match.group(2).strip(),
-                'reason': match.group(3).strip(),
-                'type': 'EFT'
+                'name': name,
+                'amount': amount,
+                'reason': reason,
+                'type': payment_type
             })
         else:
             rows.append({
@@ -115,7 +131,7 @@ def parse_consolidated_line(text_dump):
                 'name': line[:20] + "...",
                 'amount': "",
                 'reason': line,
-                'type': 'EFT'
+                'type': payment_type
             })
     return rows
 
@@ -139,16 +155,22 @@ tab1, tab2 = st.tabs(["📝 Single Receipt", "📋 WhatsApp List"])
 # --- TAB 1: SINGLE RECEIPT ---
 with tab1:
     st.subheader("Create One Receipt")
-    
+
     col1, col2 = st.columns(2)
     with col1:
-        s_name = st.text_input("Name", placeholder="e.g. Fatima Patel")
+        s_name = st.text_input("Name", placeholder="e.g. Kharodia's Abdul, Zahra")
         s_amount = st.text_input("Amount", value="R ")
-        s_type = st.radio("Payment Type", ["EFT", "CASH"], horizontal=True)
     with col2:
-        s_reason = st.text_area("Reason", placeholder="e.g. Feb (R675 Sadia R675 Fatima)", height=100)
-        s_rn = st.text_input("Receipt No (RN)", value="1001")
-        s_date = st.date_input("Date", datetime.datetime.now())
+        REASON_OPTIONS = ["swim fees", "aqua fees", "Custom..."]
+        s_reason_select = st.selectbox("Reason", REASON_OPTIONS)
+        if s_reason_select == "Custom...":
+            s_reason = st.text_input("Custom Reason", placeholder="e.g. Feb (R675 Sadia R675 Fatima)")
+        else:
+            s_reason = s_reason_select
+        s_type = st.radio("Payment Type", ["EFT", "CASH"], horizontal=True)
+
+    s_rn = st.text_input("Receipt No (RN)", value="1001")
+    s_date = st.date_input("Date", datetime.datetime.now())
 
     if st.button("Generate Single Image", type="primary"):
         single_data = {
@@ -178,8 +200,8 @@ with tab1:
 # --- TAB 2: WHATSAPP LIST (UPDATED WITH FORM) ---
 with tab2:
     st.subheader("Paste WhatsApp List")
-    st.markdown("Format: `Name R[Amount] Reason`")
-    st.caption("Example: Ebrahims R2025 Feb (R675 sadia aqua R675 Faatima R675 Mo)")
+    st.markdown("Format: `Name R[Amount](optional breakdown) swim fees|aqua fees EFT|CASH`")
+    st.caption("Example: Kharodia's Abdul, Zahra, Saleemah R2070(R200 reg R400 goggles bal fees) swim fees EFT")
 
     # 1. THE INPUT FORM
     with st.form("whatsapp_input_form"):
@@ -207,9 +229,14 @@ with tab2:
             column_config={
                 "rn": st.column_config.TextColumn("Receipt No (Required)", help="Enter RN manually"),
                 "date": st.column_config.TextColumn("Date"),
-                "amount": st.column_config.TextColumn("Amount"),
                 "name": st.column_config.TextColumn("Name"),
-                "reason": st.column_config.TextColumn("Reason", width="large"),
+                "amount": st.column_config.TextColumn("Amount"),
+                "reason": st.column_config.SelectboxColumn(
+                    "Reason", options=["swim fees", "aqua fees"], width="medium"
+                ),
+                "type": st.column_config.SelectboxColumn(
+                    "Payment Type", options=["EFT", "CASH"]
+                ),
             },
             key="editor" # Unique key for the widget
         )
