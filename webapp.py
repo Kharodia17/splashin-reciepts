@@ -40,7 +40,10 @@ def create_receipt_image(data, template_img):
     # Parse Data
     name = str(data.get('name', ''))
     amount = str(data.get('amount', ''))
-    raw_reason = str(data.get('reason', ''))
+    reason = str(data.get('reason', ''))
+    breakdown = str(data.get('breakdown', ''))
+    # Combine into format expected by the smart formatter: "swim fees (R200 reg ...)"
+    raw_reason = f"{reason} ({breakdown})" if breakdown.strip() else reason
     rn = str(data.get('rn', ''))
     date = str(data.get('date', ''))
     
@@ -112,16 +115,17 @@ def parse_consolidated_line(text_dump):
         if amount_match:
             name = remainder[:amount_match.start()].strip()
             amount = amount_match.group(1)
-            breakdown = amount_match.group(2) or ''
+            breakdown_raw = amount_match.group(2) or ''
+            # Strip surrounding brackets from breakdown e.g. "(R200 reg)" -> "R200 reg"
+            breakdown = breakdown_raw.strip('()')
             reason_text = remainder[amount_match.end():].strip()
-            # Combine reason + breakdown so create_receipt_image() formats it correctly
-            reason = (reason_text + ' ' + breakdown).strip() if breakdown else reason_text
             rows.append({
                 'rn': "",
                 'date': datetime.datetime.now().strftime("%Y-%m-%d"),
                 'name': name,
                 'amount': amount,
-                'reason': reason,
+                'reason': reason_text,
+                'breakdown': breakdown,
                 'type': payment_type
             })
         else:
@@ -131,6 +135,7 @@ def parse_consolidated_line(text_dump):
                 'name': line[:20] + "...",
                 'amount': "",
                 'reason': line,
+                'breakdown': "",
                 'type': payment_type
             })
     return rows
@@ -164,9 +169,10 @@ with tab1:
         REASON_OPTIONS = ["swim fees", "aqua fees", "Custom..."]
         s_reason_select = st.selectbox("Reason", REASON_OPTIONS)
         if s_reason_select == "Custom...":
-            s_reason = st.text_input("Custom Reason", placeholder="e.g. Feb (R675 Sadia R675 Fatima)")
+            s_reason = st.text_input("Custom Reason", placeholder="e.g. reg fees")
         else:
             s_reason = s_reason_select
+        s_breakdown = st.text_input("Breakdown (optional)", placeholder="e.g. R200 reg R400 goggles bal fees")
         s_type = st.radio("Payment Type", ["EFT", "CASH"], horizontal=True)
 
     s_rn = st.text_input("Receipt No (RN)", value="1001")
@@ -177,6 +183,7 @@ with tab1:
             'name': s_name,
             'amount': s_amount,
             'reason': s_reason,
+            'breakdown': s_breakdown,
             'rn': s_rn,
             'type': s_type,
             'date': s_date.strftime("%Y-%m-%d")
@@ -234,6 +241,7 @@ with tab2:
                 "reason": st.column_config.SelectboxColumn(
                     "Reason", options=["swim fees", "aqua fees"], width="medium"
                 ),
+                "breakdown": st.column_config.TextColumn("Breakdown", width="large"),
                 "type": st.column_config.SelectboxColumn(
                     "Payment Type", options=["EFT", "CASH"]
                 ),
